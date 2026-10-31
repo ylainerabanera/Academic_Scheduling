@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\Set;
 use App\Models\Subject;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Validator;
 
 class ScheduleController extends Controller
@@ -40,9 +41,29 @@ class ScheduleController extends Controller
     public function store(Request $request)
     {
         $data = $this->validateSchedule($request);
+        $matchExistingColor = $this->shouldMatchExistingColor($request);
+
+        if ($matchExistingColor) {
+            $matchedColor = $this->matchingColorFor($data['subject_id'], $data['set_id']);
+
+            if (!$matchedColor) {
+                throw ValidationException::withMessages([
+                    'color' => 'No matching subject and set color found. Turn off the switch and choose a color.',
+                ]);
+            }
+
+            $data['color'] = $matchedColor;
+        } elseif (blank($data['color'])) {
+            throw ValidationException::withMessages([
+                'color' => 'Please choose a timetable color.',
+            ]);
+        }
 
         $schedule = Schedule::create($data);
-        $this->syncMatchingScheduleColors($schedule);
+
+        if (!$matchExistingColor) {
+            $this->syncMatchingScheduleColors($schedule);
+        }
 
         return redirect()->route('schedules.index')->with('status', 'Schedule created successfully.');
     }
@@ -55,9 +76,23 @@ class ScheduleController extends Controller
     public function update(Request $request, Schedule $schedule)
     {
         $data = $this->validateSchedule($request, $schedule);
+        $matchExistingColor = $this->shouldMatchExistingColor($request);
+
+        if ($matchExistingColor) {
+            $matchedColor = $this->matchingColorFor($data['subject_id'], $data['set_id'], $schedule->id);
+
+            $data['color'] = $matchedColor ?? $schedule->color;
+        } elseif (blank($data['color'])) {
+            throw ValidationException::withMessages([
+                'color' => 'Please choose a timetable color.',
+            ]);
+        }
 
         $schedule->update($data);
-        $this->syncMatchingScheduleColors($schedule);
+
+        if (!$matchExistingColor) {
+            $this->syncMatchingScheduleColors($schedule);
+        }
 
         return redirect()->route('schedules.index')->with('status', 'Schedule updated successfully.');
     }
@@ -78,6 +113,8 @@ class ScheduleController extends Controller
             'faculties' => Faculty::query()->orderBy('name')->get(),
             'rooms' => Room::query()->orderBy('building_name')->orderBy('room_name')->get(),
             'days' => $this->days,
+            'matchingColors' => $this->matchingColors(),
+            'inheritedColor' => $this->inheritedColor($schedule),
         ];
     }
 
@@ -93,7 +130,8 @@ class ScheduleController extends Controller
             'end_time' => ['required', 'date_format:H:i', 'after:start_time'],
             'class_type' => ['required', 'string', 'in:face_to_face,online'],
             'g_code' => ['nullable', 'string'],
-            'color' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'color' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'match_existing_color' => ['nullable', 'boolean'],
         ]);
 
         $validator->after(function ($validator) use ($request) {
@@ -186,6 +224,44 @@ class ScheduleController extends Controller
             ->where('set_id', $schedule->set_id)
             ->where('subject_id', $schedule->subject_id)
             ->update(['color' => $schedule->color]);
+    }
+
+    private function matchingColors(): array
+    {
+        return Schedule::query()
+            ->orderBy('id')
+            ->get(['subject_id', 'set_id', 'color'])
+            ->groupBy(fn (Schedule $schedule) => $schedule->subject_id . ':' . $schedule->set_id)
+            ->map(fn ($group) => $group->first()->color)
+            ->all();
+    }
+
+    private function matchingColorFor(int $subjectId, int $setId, ?int $ignoreScheduleId = null): ?string
+    {
+        $query = Schedule::query()
+            ->where('subject_id', $subjectId)
+            ->where('set_id', $setId)
+            ->orderBy('id');
+
+        if ($ignoreScheduleId) {
+            $query->where('id', '!=', $ignoreScheduleId);
+        }
+
+        return $query->value('color');
+    }
+
+    private function inheritedColor(?Schedule $schedule = null): ?string
+    {
+        if (!$schedule) {
+            return null;
+        }
+
+        return $this->matchingColorFor($schedule->subject_id, $schedule->set_id, $schedule->id) ?? $schedule->color;
+    }
+
+    private function shouldMatchExistingColor(Request $request): bool
+    {
+        return $request->boolean('match_existing_color');
     }
 
     private function minutesFromTime(string $time): int

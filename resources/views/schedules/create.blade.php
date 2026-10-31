@@ -4,7 +4,10 @@
 <div class="container">
     <h3 class="mb-3">Add Schedule</h3>
 
-    <form method="POST" action="{{ route('schedules.store') }}" class="card card-body" data-schedule-form>
+    <form method="POST" action="{{ route('schedules.store') }}" class="card card-body"
+        data-schedule-form
+        data-matching-colors='@json($matchingColors)'
+        data-inherited-color="{{ $inheritedColor ?? '' }}">
         @csrf
         @include('schedules.partials.form', ['schedule' => null])
         <button class="btn btn-primary">Save</button>

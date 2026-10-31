@@ -1,6 +1,12 @@
 @php
     $currentClassType = old('class_type', $schedule?->class_type ?? 'face_to_face');
-    $currentColor = old('color', $schedule?->color ?? '#e9f4c8');
+    $matchExistingInput = old('match_existing_color');
+    $matchExistingColor = $matchExistingInput !== null ? $matchExistingInput !== '0' : !empty($inheritedColor);
+    $defaultColor = $matchExistingColor ? ($inheritedColor ?? '') : ($schedule?->color ?? '');
+    $currentColor = old('color', $defaultColor);
+    $pickerColor = old('color', $defaultColor);
+    $pickerInputColor = $pickerColor ?: '#ffffff';
+    $hasColor = filled($currentColor);
 @endphp
 
 <div class="mb-3">
@@ -92,11 +98,52 @@
 
 <div class="mb-3">
     <label class="form-label">Timetable Color</label>
-    <div class="schedule-color-picker">
-        <input type="color" name="color" class="form-control form-control-color schedule-color-input"
-            value="{{ $currentColor }}" required>
-        {{-- <div class="schedule-color-copy">
-            Same course/year/set and subject will use this background color in the timetable.
-        </div> --}}
+    <input type="hidden" name="color" value="{{ $currentColor }}" data-color-value>
+    <div class="schedule-color-row">
+        <div class="schedule-color-toggle">
+            <div class="form-check form-switch schedule-switch">
+                <input type="hidden" name="match_existing_color" value="0">
+                <input type="checkbox" name="match_existing_color" value="1" id="match-existing-color"
+                    class="form-check-input" @checked($matchExistingColor)>
+                <label class="form-check-label" for="match-existing-color">
+                    Match existing subject and set color
+                </label>
+            </div>
+            {{-- <div class="form-text schedule-color-copy">
+                On = inherit the shared color automatically.
+            </div> --}}
+        </div>
+
+        <div class="schedule-color-field">
+            {{-- <div class="schedule-color-state" data-color-state data-has-color="{{ $hasColor ? '1' : '0' }}">
+                <span class="schedule-color-swatch{{ $hasColor ? '' : ' d-none' }}" data-color-swatch
+                    style="{{ $hasColor ? 'background-color: ' . $currentColor . ';' : '' }}"></span>
+                <span class="schedule-color-state-label{{ $hasColor ? '' : ' d-none' }}"
+                    data-color-state-label>Using matched color</span>
+            </div> --}}
+            <div class="schedule-color-state" data-color-state data-has-color="{{ $hasColor ? '1' : '0' }}">
+                <span class="schedule-color-swatch{{ $hasColor ? '' : ' d-none' }}" data-color-swatch
+                    style="{{ $hasColor ? 'background-color: ' . $currentColor . ';' : '' }}"></span>
+
+                <span class="schedule-color-state-label" data-color-state-label>
+                    {{ $hasColor ? 'Using matched color' : 'No color' }}
+                </span>
+            </div>
+
+            <div class="schedule-color-picker-wrap" data-color-picker-wrap>
+                <label class="schedule-color-picker-trigger{{ $hasColor ? '' : ' is-empty' }}" data-color-picker-trigger>
+                    <span class="schedule-color-picker-preview" data-color-preview>
+                        <span class="schedule-color-picker-fill" data-color-picker-fill
+                            style="background-color: {{ $hasColor ? $pickerColor : '#ffffff' }};"></span>
+                    </span>
+                    <input type="color" class="schedule-color-input" value="{{ $pickerInputColor }}"
+                        data-color-picker aria-label="Choose timetable color">
+                </label>
+            </div>
+
+            {{-- <div class="schedule-color-copy">
+                Off = choose a manual color and apply it to every matching schedule.
+            </div> --}}
+        </div>
     </div>
 </div>
